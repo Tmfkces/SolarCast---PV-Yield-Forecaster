@@ -1,0 +1,126 @@
+# Replit prompt — PV Yield Forecaster (Pakistan)
+
+Copy everything below the line into Replit Agent. Build in stages: paste Stage 1, let it finish and run, then paste Stage 2, etc. Do not paste all stages at once.
+
+---
+
+## STAGE 1 — Project setup, data layer, physics model
+
+Build a Python project called **`pv-yield-pk`** — a solar photovoltaic (PV) energy yield forecaster for cities in Pakistan. It must be a clean, testable scientific-computing codebase, not just a web app. Use Python 3.11, Streamlit for the UI, and keep all science code in importable modules under `src/pvyield/` so it can be used without the UI.
+
+### Repo structure (create exactly this)
+```
+pv-yield-pk/
+  README.md
+  requirements.txt
+  app.py                      # Streamlit UI (Stage 3)
+  src/pvyield/
+    __init__.py
+    cities.py                 # Pakistan city list with lat/lon/elevation
+    data.py                   # NASA POWER API client + caching
+    physics.py                # physics-based PV model
+    ml.py                     # ML model (Stage 2)
+    evaluate.py               # metrics + comparison (Stage 2)
+    plots.py                  # matplotlib/plotly figures
+  tests/
+    test_physics.py
+    test_data.py
+  data/cache/                 # cached API responses (gitignored)
+  notebooks/analysis.ipynb    # Stage 4
+```
+
+### cities.py
+A dict of at least 25 Pakistani cities with `lat`, `lon`, `elevation_m`, and `province`. Include: Faisalabad (default), Lahore, Karachi, Islamabad, Rawalpindi, Multan, Peshawar, Quetta, Hyderabad, Gujranwala, Sialkot, Bahawalpur, Sargodha, Sukkur, Larkana, Sahiwal, Gojra, Jhang, Sheikhupura, Mardan, Abbottabad, Gwadar, Gilgit, Skardu, Muzaffarabad, Dera Ghazi Khan, Rahim Yar Khan, Mirpur Khas, Turbat, Chitral. Use real coordinates.
+
+### data.py
+Fetch **daily** data from the free NASA POWER API (no API key):
+`https://power.larc.nasa.gov/api/temporal/daily/point?parameters=ALLSKY_SFC_SW_DWN,CLRSKY_SFC_SW_DWN,T2M,T2M_MAX,T2M_MIN,RH2M,WS2M,PRECTOTCORR&community=RE&longitude={lon}&latitude={lat}&start={YYYYMMDD}&end={YYYYMMDD}&format=JSON`
+- Return a pandas DataFrame indexed by date with columns: `ghi` (kWh/m²/day, from ALLSKY_SFC_SW_DWN), `ghi_clear` (CLRSKY_SFC_SW_DWN), `t_amb`, `t_max`, `t_min`, `rh`, `wind`, `precip`.
+- Replace NASA's fill value `-999` with NaN and forward-fill gaps ≤ 3 days; drop longer gaps.
+- Cache each (city, start, end) request as a parquet/CSV in `data/cache/` so repeated runs don't hit the API.
+- Function signature: `fetch_daily(city: str, start: str, end: str) -> pd.DataFrame`.
+
+### physics.py — physics-based daily yield model
+Implement a transparent, documented model with all constants at the top and docstrings explaining the equations:
+
+1. **Plane-of-array irradiance**: convert daily GHI to plane-of-array irradiance for a tilted, south-facing panel using a simple geometric transposition: compute daily-average solar elevation from latitude and day-of-year (declination formula), then `poa = ghi * max(cos(lat - tilt - decl), 0.05) / max(cos(lat - decl), 0.05)` — clearly comment that this is a first-order approximation (no diffuse/direct split). Default tilt = latitude.
+2. **Cell temperature**: `t_cell = t_amb + (NOCT - 20) / 800 * G_avg` where `G_avg` is the daytime-average irradiance in W/m² (estimate as `poa * 1000 / daylight_hours`; compute daylight hours from latitude and declination). NOCT default 45 °C.
+3. **Temperature derating**: `eff_factor = 1 + gamma * (t_cell - 25)`, gamma default `-0.0040 /°C`.
+4. **System losses**: single `performance_ratio` default 0.80 (soiling, wiring, inverter, mismatch) — expose as a parameter and document it. Add an optional dust/soiling penalty parameter for Pakistan (default 0.03) with a comment explaining why.
+5. **Daily energy**: `E_kwh = P_stc_kw * poa * eff_factor * performance_ratio`.
+
+Function: `physics_yield(df, lat, system_kw=5.0, tilt=None, azimuth=180, gamma=-0.004, noct=45, pr=0.80, soiling=0.03) -> pd.Series` (kWh/day).
+
+Also implement `clear_sky_index = ghi / ghi_clear` as a helper (clip 0–1.2).
+
+### tests/
+- `test_physics.py`: (a) zero GHI → zero energy; (b) higher ambient temperature → lower energy for same GHI; (c) energy scales linearly with `system_kw`; (d) tilt = latitude gives ≥ yield vs tilt = 0 on a winter day at Faisalabad.
+- `test_data.py`: test the `-999` cleaning and gap-fill logic on a synthetic DataFrame (no network call).
+Use pytest. All tests must pass.
+
+### requirements.txt
+pandas, numpy, requests, streamlit, matplotlib, plotly, scikit-learn, lightgbm, pytest, pyarrow.
+
+### After building
+Run `pytest`, then run a quick script that fetches Faisalabad 2023-01-01 to 2023-12-31 and prints monthly physics-model yield for a 5 kW system. Show me the output. Do not build the UI yet.
+
+---
+
+## STAGE 2 — ML model and evaluation
+
+Add a machine-learning forecaster and a fair comparison against the physics model.
+
+### ml.py
+- Features per day: `ghi`, `ghi_clear`, `clear_sky_index`, `t_amb`, `t_max`, `t_min`, `rh`, `wind`, `precip`, `day_of_year` (as sin/cos), lagged `ghi` for the previous 1, 2, 3 and 7 days, 7-day rolling mean of `ghi`.
+- Target: **next-day** PV energy (kWh) — the physics model's output on the true next-day weather is the label. Document clearly that this is a proxy target because we have no metered plant data, and that the model is learning to forecast tomorrow's yield from today's weather history.
+- Two models: (1) `LightGBMRegressor`, (2) `sklearn` `GradientBoostingRegressor` as a fallback if LightGBM isn't available.
+- Persistence baseline: predict tomorrow = today.
+- Time-based split only: train on the first 70% of days, validate on the next 15%, test on the last 15%. Never shuffle.
+- Save trained model with joblib into `data/models/{city}.pkl`.
+
+### evaluate.py
+- Metrics: RMSE, MAE, MAPE (ignore days with energy < 0.5 kWh), R², and skill score vs persistence = `1 - RMSE_model / RMSE_persistence`.
+- Function `compare(city, start, end, system_kw)` that returns a DataFrame with one row per model (persistence, physics-with-tomorrow's-true-weather as upper bound, LightGBM) and the metrics.
+- Feature importance (gain) from LightGBM as a Series.
+
+### plots.py
+Functions returning plotly figures: (a) daily yield time series with actual vs predicted on the test window; (b) monthly total yield bar chart; (c) scatter predicted vs actual with 1:1 line; (d) feature importance bar chart; (e) residuals by month.
+
+### Tests
+Add `tests/test_ml.py`: with synthetic data of 400 days, training runs without error, test metrics are finite, and the time split never leaks (max train date < min test date).
+
+Run `pytest` and then `compare("Faisalabad", "2019-01-01", "2024-12-31", 5.0)` and show me the metrics table.
+
+---
+
+## STAGE 3 — Streamlit UI
+
+Build `app.py`:
+- Sidebar: city selectbox (default Faisalabad, sorted alphabetically, with province shown), system size in kW (slider 1–100, default 5), tilt (default = "latitude"), performance ratio, soiling loss, date range (default last 5 full years), a "Run" button.
+- Main page, four tabs:
+  1. **Forecast** — headline numbers: annual yield (kWh), specific yield (kWh per kWp), capacity factor, best and worst month; monthly bar chart.
+  2. **Physics vs ML** — metrics table from `evaluate.compare` and the actual-vs-predicted time series and scatter.
+  3. **Explain** — feature importance chart and a short plain-English paragraph explaining what drives yield in this city.
+  4. **Data** — the raw cleaned weather DataFrame with a CSV download button.
+- Cache API calls and model training with `st.cache_data` / `st.cache_resource`.
+- Show a spinner while fetching; handle API failure with a clear error message, not a traceback.
+- Clean, minimal styling. No emojis in the UI.
+
+Run the app and confirm it loads for Faisalabad, Karachi and Skardu.
+
+---
+
+## STAGE 4 — README and notebook (this is what reviewers read)
+
+Write `README.md` as a short technical report, in this order:
+1. **Problem** (3–4 sentences): rooftop solar adoption in Pakistan, why day-ahead yield estimates matter for households and small businesses.
+2. **Data**: NASA POWER, parameters used, date range, cleaning.
+3. **Method**: the physics model equations (rendered in Markdown math), then the ML model, features, target definition and its limitation, the time-based split.
+4. **Results**: the metrics table for Faisalabad, Karachi, Quetta and Skardu (run `compare` for each and paste), one figure of actual vs predicted, one feature-importance figure, and 3–4 sentences interpreting them (e.g. where the ML model beats persistence most, why clear-sky index matters).
+5. **Limitations and next steps**: no metered plant data, simplified transposition model, no hourly resolution, no dust events — and what real data would be needed.
+6. **How to run**: install, test, launch.
+7. **Author**: Tahreem Fatima, BS Physics (GCUF).
+
+Save the figures used in the README to `docs/figures/` as PNG. Create `notebooks/analysis.ipynb` that reproduces the Results section end to end.
+
+Finally: add a `.gitignore` (cache, models, `__pycache__`), make sure `pytest` passes, and give me the final file tree.

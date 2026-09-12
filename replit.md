@@ -1,6 +1,6 @@
-# [Project name]
+# Pakistan PV Yield Forecaster
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Python scientific-computing project that estimates daily rooftop PV yield for cities in Pakistan and compares a physics model with a time-ordered ML forecast.
 
 ## Run & Operate
 
@@ -22,15 +22,20 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `pv-yield-pk/src/pvyield/` — importable city, NASA data, physics, ML, evaluation, and plotting modules.
+- `pv-yield-pk/app.py` — Streamlit interface.
+- `pv-yield-pk/tests/` — pytest coverage for cleaning, physics, and time-based ML splitting.
+- `pv-yield-pk/notebooks/analysis.ipynb` — reproducible report analysis.
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- NASA POWER is accessed directly because it is a public, no-key endpoint; city/date responses are cached locally.
+- The ML target is the physics model's true next-day weather output, explicitly treated as a proxy rather than metered production.
+- The default estimator is LightGBM with a GradientBoosting fallback when native LightGBM support is unavailable.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+The Streamlit app forecasts annualized yield, specific yield, capacity factor, monthly seasonality, model metrics, feature importance, and cleaned weather data for 30 Pakistan cities.
 
 ## User preferences
 
@@ -38,7 +43,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Run from `pv-yield-pk` with `PYTHONPATH=src` so the scientific package is importable.
+- NASA responses are cached under `pv-yield-pk/data/cache/`; remove a cache file to force a fresh request.
 
 ## Pointers
 

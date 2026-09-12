@@ -1,0 +1,1 @@
+- [PV forecasting runtime](pv-forecasting-runtime.md) — NASA POWER responses are column-oriented; Streamlit needs headless usage stats disabled for noninteractive workflows.

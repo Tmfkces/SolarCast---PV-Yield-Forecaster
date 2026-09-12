@@ -47,3 +47,15 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Python / PV yield project
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.pythonlibs/
+pv-yield-pk/data/cache/*
+!pv-yield-pk/data/cache/.gitkeep
+pv-yield-pk/data/models/*
+!pv-yield-pk/data/models/.gitkeep
+.streamlit/secrets.toml
