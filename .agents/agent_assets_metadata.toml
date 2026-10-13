@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "m40OqPBigyQ3hP9-iwm9M"
+uri = "file://pv-yield-pk/docs/student_interview_guide.docx"
+type = "word_document"
+title = "PV Yield Forecaster — Student Interview Guide"
+description = "A beginner-friendly Word guide explaining how the project works, its equations and ML pipeline, benchmark results, limitations, interview questions, and glossary."
+logical_id = "0d45393d-e2b7-4c53-9cfc-1be39eb17ee8"
+content_hash = "sha256:7ff5ccbffbda9f370cf899af7349828c554197c07a80b3ba94cbd076aaaed42d"
+size = 320644
+mtime_ms = 1791886109116
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:61004d99-69fe-4438-a5be-cca5581a8b47/0d45393d-e2b7-4c53-9cfc-1be39eb17ee8/96472a6d-5cdf-46b4-a002-bc515495df1d"
+storage_version_token = "1791886148936655"
+content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
