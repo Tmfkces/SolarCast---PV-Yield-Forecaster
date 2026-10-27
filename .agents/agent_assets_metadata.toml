@@ -14,3 +14,17 @@ mtime_ms = 1791886109116
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:61004d99-69fe-4438-a5be-cca5581a8b47/0d45393d-e2b7-4c53-9cfc-1be39eb17ee8/96472a6d-5cdf-46b4-a002-bc515495df1d"
 storage_version_token = "1791886148936655"
 content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+[[outputs]]
+id = "joDf-XM2Jhmg5uywtgDRH"
+uri = "file://generated-artifacts/PV_Yield_Forecaster_Research_Package.zip"
+type = "unspecified"
+title = "PV Yield Forecaster — Research Package ZIP"
+description = "Project source code, saved city models, benchmark metrics, Faisalabad prediction chart, cached NASA POWER weather CSVs, and a reproducibility note covering target construction, available features, train/test split, city list, and date ranges."
+logical_id = "96e25ec7-21da-4085-bb1c-aab331d5f8d8"
+content_hash = "sha256:a8e018dbe4647448da8a45f293eb1c9051d957417e868f6d10987cdc5026cb97"
+size = 1859484
+mtime_ms = 1793105025388
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:61004d99-69fe-4438-a5be-cca5581a8b47/96e25ec7-21da-4085-bb1c-aab331d5f8d8/4c017e5a-3800-4e9d-a25c-fdae49fa8fc2"
+storage_version_token = "1793105039163846"
+content_type = "application/octet-stream"

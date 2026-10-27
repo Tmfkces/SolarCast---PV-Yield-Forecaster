@@ -59,3 +59,4 @@ pv-yield-pk/data/cache/*
 pv-yield-pk/data/models/*
 !pv-yield-pk/data/models/.gitkeep
 .streamlit/secrets.toml
+/generated-artifacts/
