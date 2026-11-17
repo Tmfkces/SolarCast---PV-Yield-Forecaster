@@ -209,7 +209,7 @@ The `artifacts/`, `lib/` and `scripts/` folders are a TypeScript template left o
 
 ## Author
 
-**Tahreem Fatima**, BS Physics, Government College University Faisalabad.
+**Tahreem Fatima**
 
 ## License
 
