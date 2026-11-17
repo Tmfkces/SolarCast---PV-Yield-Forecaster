@@ -104,8 +104,8 @@ def test_streamlit_app_end_to_end(offline_weather):
     outlook_html = " ".join(md.value for md in app.markdown)
     assert "Best hours for heavy appliances" in outlook_html
     assert "kWh expected" in outlook_html
-    assert outlook_html.count('class="sc-row') == 7  # 7-day list
-    assert 'class="sc-hour' in outlook_html  # hourly strip
+    assert outlook_html.count('class="pc-row') == 7  # 7-day list
+    assert 'class="pc-hour' in outlook_html  # hourly strip
     assert "<svg" in outlook_html  # line icons, sun arc
     assert "Solar can run all of this" in outlook_html or "Solar covers about" in outlook_html  # appliance planner
     assert "Value this week" in outlook_html
@@ -150,3 +150,14 @@ def test_streamlit_app_url_settings_win_and_bad_values_are_safe(offline_weather)
     assert app.session_state["city"] == "Karachi"
     assert app.session_state["kw"] == 100.0  # clamped to the slider range
     assert app.session_state["setup"] == "net_metering"
+
+
+def test_city_chips_switch_city(offline_weather):
+    testing = pytest.importorskip("streamlit.testing.v1")
+    app = testing.AppTest.from_file(str(APP), default_timeout=120)
+    app.run()
+    chips = next(p for p in app.get("button_group") if "Karachi" in list(p.options))
+    chips.set_value("Karachi").run()
+    assert not app.exception, app.exception
+    assert app.session_state["city"] == "Karachi"
+    assert any("Karachi, Sindh" in md.value for md in app.markdown)

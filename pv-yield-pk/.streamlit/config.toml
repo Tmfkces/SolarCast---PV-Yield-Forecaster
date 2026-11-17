@@ -10,17 +10,21 @@ gatherUsageStats = false
 
 [client]
 showErrorDetails = "minimal"
+
+# SolarCast follows the device's light/dark setting ("System" in Streamlit's
+# Settings menu). Users can also pick Light or Dark there.
 [theme]
-primaryColor = "#F59E0B"
-baseRadius = "0.75rem"
-font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+baseRadius = "1rem"
+font = "Poppins:https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
 
 [theme.light]
-backgroundColor = "#F6F7F9"
-secondaryBackgroundColor = "#ECEFF3"
-textColor = "#1F2937"
+primaryColor = "#5B5BD6"
+backgroundColor = "#F6F4FD"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#2B2A4C"
 
 [theme.dark]
-backgroundColor = "#0E1117"
-secondaryBackgroundColor = "#161B24"
-textColor = "#E5E7EB"
+primaryColor = "#8B8BF5"
+backgroundColor = "#0F1020"
+secondaryBackgroundColor = "#181A2E"
+textColor = "#ECEBFF"

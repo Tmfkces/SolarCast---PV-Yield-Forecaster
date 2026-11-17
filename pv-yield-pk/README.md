@@ -173,7 +173,7 @@ python -m pvyield train --city Karachi --start 2019-01-01 --end 2024-12-31 --out
 
 ### Tests
 
-`pytest` runs 103 offline tests. They cover solar geometry against textbook values, the energy model, cleaning, caching with mocked NASA and Open-Meteo APIs, leakage across gaps, model selection, metrics, the 7-day outlook (usual day, advice, peak hours, value, appliance planner, offline copy), the CLI, saved settings, and end-to-end Streamlit runs. `pytest -m network` adds live NASA POWER and Open-Meteo requests.
+`pytest` runs 105 offline tests. They cover solar geometry against textbook values, the energy model, cleaning, caching with mocked NASA and Open-Meteo APIs, leakage across gaps, model selection, metrics, the 7-day outlook (usual day, advice, peak hours, value, appliance planner, offline copy), the CLI, saved settings, and end-to-end Streamlit runs. `pytest -m network` adds live NASA POWER and Open-Meteo requests.
 
 ### App
 

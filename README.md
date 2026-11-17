@@ -9,7 +9,7 @@ A rooftop-solar forecast for **30 cities across Pakistan**: a 7-day outlook in k
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/app-Streamlit-FF4B4B?logo=streamlit&logoColor=white)
 [![CI](https://github.com/Tmfkces/SolarCast---PV-Yield-Forecaster/actions/workflows/ci.yml/badge.svg)](https://github.com/Tmfkces/SolarCast---PV-Yield-Forecaster/actions/workflows/ci.yml)
-![Tests](https://img.shields.io/badge/tests-103%20passing-16A34A)
+![Tests](https://img.shields.io/badge/tests-105%20passing-16A34A)
 ![Data](https://img.shields.io/badge/data-NASA%20POWER%20%2B%20Open--Meteo-0EA5E9)
 
 </div>
@@ -17,7 +17,7 @@ A rooftop-solar forecast for **30 cities across Pakistan**: a 7-day outlook in k
 ---
 
 <p align="center">
-  <img src="pv-yield-pk/docs/screenshots/outlook.png" alt="SolarCast outlook for Lahore: 22.1 kWh expected tomorrow, sun arc showing the best hours 10 AM to 1 PM" width="780">
+  <img src="pv-yield-pk/docs/screenshots/outlook.png" alt="SolarCast outlook for Lahore: illustrated sky with a Pakistani skyline, 108% of a usual day, 22.1 kWh expected tomorrow, appliance recommendations, hourly output and 7-day list" width="780">
 </p>
 
 ## Why
@@ -32,10 +32,15 @@ SolarCast turns the weather forecast into that kind of plain advice for **your**
 ## Features
 
 **Everyday outlook**
-- **7-day forecast in kWh** for your system size, tilt and direction, laid out like a weather app: a sky-coloured card for the day, an hourly strip, and a 7-day list.
+- **7-day forecast in kWh** for your system size, tilt and direction, laid out like a modern weather app:
+  - an illustrated sky that changes with the weather and time of day (sunny, cloudy, rainy, sunset, night), over a Pakistani skyline with rooftop solar and Basant kites;
+  - a colour ring showing the day as a percentage of a usual day, plus a half-circle gauge of the expected kWh;
+  - an "at a glance" card, a weather card, an hourly strip, and a 7-day list;
+  - quick city chips (Lahore, Karachi, Islamabad and more) to switch city in one tap.
+- **Light and dark mode.** Follows your phone or computer setting automatically; or switch instantly from the ⋮ menu at the top right (System, Light or Dark).
 - **Compared with a usual day.** Each day is rated against the median day for that month, so "Save power" and "Use power" only appear when a day really stands out.
-- **Best hours for heavy appliances**, shown on a sunrise-to-sunset arc and highlighted in the hourly strip.
-- **Appliance planner.** Pick a washing machine, iron, water pump, geyser, AC, kettle or e-bike charger, and it tells you whether solar can run them and between which hours.
+- **Best hours for heavy appliances**, highlighted in the hourly strip.
+- **Your energy recommendation.** Pick a washing machine, iron, water pump, geyser, AC, kettle or e-bike charger. Each gets a tile saying when to run it on solar (for example "Run 11 AM–12 PM") or to wait for a sunnier day, plus a check on whether solar covers them all together.
 - **Pakistan-aware advice:**
   - seasonal **peak-tariff hours** (for example 6–10 PM in winter months);
   - setups for **net metering**, **battery or hybrid inverter**, and **on-grid without net metering**;
@@ -54,9 +59,9 @@ SolarCast turns the weather forecast into that kind of plain advice for **your**
 - **Data:** the cleaned daily weather, downloadable as CSV.
 
 <p align="center">
-  <img src="pv-yield-pk/docs/screenshots/week.png" alt="Hourly strip, 7-day outlook and appliance planner" width="600">
+  <img src="pv-yield-pk/docs/screenshots/mobile.png" alt="SolarCast on a phone: sky card, at-a-glance metrics, solar output gauge and appliance recommendations" width="280">
   &nbsp;&nbsp;
-  <img src="pv-yield-pk/docs/screenshots/mobile.jpg" alt="SolarCast on a phone" width="190">
+  <img src="pv-yield-pk/docs/screenshots/outlook_dark.png" alt="SolarCast in dark mode" width="420">
 </p>
 
 ## Quick start
@@ -138,7 +143,7 @@ python -m pvyield train --city Karachi --start 2019-01-01 --end 2024-12-31 --out
 
 ```bash
 cd pv-yield-pk
-pytest             # 103 offline tests (mocked weather APIs)
+pytest             # 105 offline tests (mocked weather APIs)
 pytest -m network  # live checks against NASA POWER and Open-Meteo
 ruff check .
 ```

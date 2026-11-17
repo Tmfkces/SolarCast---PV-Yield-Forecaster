@@ -252,3 +252,14 @@ def test_estimate_value_by_setup():
     assert small["self_kwh"] == pytest.approx(3.0) and small["export_kwh"] == 0
     with pytest.raises(ValueError):
         forecast.estimate_value(1.0, price=55, setup="solar_farm")
+
+
+def test_theme_css_covers_device_and_live_theme():
+    from pvyield.ui import DARK, LIGHT, THEME_WATCHER, theme_css
+
+    assert set(LIGHT) == set(DARK)  # every colour has a dark counterpart
+    css = theme_css()
+    assert "prefers-color-scheme: dark" in css  # device setting before the page script runs
+    assert 'html[data-pc-theme="dark"] [data-testid="stAppViewContainer"] { --pc-page: #0F1020' in css
+    assert 'html[data-pc-theme="light"] [data-testid="stAppViewContainer"] { --pc-page: #F6F4FD' in css
+    assert "data-pc-theme" in THEME_WATCHER and "MutationObserver" in THEME_WATCHER

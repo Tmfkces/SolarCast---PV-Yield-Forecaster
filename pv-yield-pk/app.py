@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT / "src") not in sys.path:
@@ -43,7 +44,20 @@ from pvyield.plots import (  # noqa: E402
     residuals_by_month_figure,
     scatter_figure,
 )
-from pvyield.ui import CSS, day_name, hero_html, hourly_html, plan_html, tiles_html, week_html  # noqa: E402
+from pvyield.ui import (  # noqa: E402
+    THEME_WATCHER,
+    day_name,
+    gauge_html,
+    header_html,
+    hero_html,
+    hourly_html,
+    metrics_html,
+    recommendation_html,
+    savings_html,
+    theme_css,
+    weather_card_html,
+    week_html,
+)
 
 MIN_DAYS_FOR_ML = 120
 METRIC_LABELS = {
@@ -238,7 +252,10 @@ def sidebar_inputs() -> dict:
             help="Inverter, wiring, mismatch and other losses. Temperature and soiling are modelled separately.",
         )
         soiling = st.slider("Soiling loss", min_value=0.0, max_value=0.20, step=0.01, format="%.2f", key="soil")
-    sb.caption("Your settings are saved on this computer and in the page link, so you can bookmark it.")
+    sb.caption(
+        "Your settings are saved on this computer and in the page link, so you can bookmark it. "
+        "Dark mode follows your device; switch it any time from the ⋮ menu (top right): System, Light or Dark."
+    )
     return {
         "city": city,
         "system_kw": kw,
@@ -303,7 +320,6 @@ def render_outlook(settings: dict) -> None:
         except ValueError:
             pass
 
-    st.markdown(CSS, unsafe_allow_html=True)
     focus = st.segmented_control(
         "Day", options=list(days.index), format_func=day_name, default=default, label_visibility="collapsed"
     )
@@ -315,43 +331,63 @@ def render_outlook(settings: dict) -> None:
     hours = outlook.hourly.loc[hour_day == focus]
     is_today = focus == today
     left_today = float(hours.loc[hours.index > now, "energy_kwh"].sum()) if is_today else None
-    st.markdown(hero_html(outlook, focus, left_today=left_today), unsafe_allow_html=True)
-
-    s = st.session_state
-    per_day = [
-        estimate_value(kwh, s["price"], settings["setup"], s["export"], s["use"], s["batt"])
-        for kwh in days["yield_kwh"]
-    ]
-    week_value = {k: sum(d[k] for d in per_day) for k in per_day[0]}
-    st.markdown(tiles_html(outlook, week_value, s["price"], SETUPS[settings["setup"]]), unsafe_allow_html=True)
-
     row = days.loc[focus]
     start = row["window_start"] if pd.notna(row["window_start"]) else None
     end = row["window_end"] if pd.notna(row["window_end"]) else None
-    st.markdown(
-        hourly_html(hours, start, end, now=now if is_today else None, peak=peak_label(focus.month)),
-        unsafe_allow_html=True,
-    )
+    peak = peak_label(focus.month)
 
-    left, right = st.columns([3, 2], gap="medium")
+    s = st.session_state
+    per_day = [
+        estimate_value(kwh, s["price"], settings["setup"], s["export"], s["use"], s["batt"]) for kwh in days["yield_kwh"]
+    ]
+    week_value = {k: sum(d[k] for d in per_day) for k in per_day[0]}
+    day_value = per_day[list(days.index).index(focus)]["rupees"]
+
+    left, right = st.columns([1.15, 1], gap="medium")
     with left:
-        st.markdown(week_html(outlook, focus, href=lambda d: link_with(day=d.date().isoformat())), unsafe_allow_html=True)
-    with right, st.container(border=True):
+        st.markdown(hero_html(outlook, focus, city=city, left_today=left_today, now=now), unsafe_allow_html=True)
+        st.markdown(metrics_html(row, focus, day_value, peak), unsafe_allow_html=True)
+        chosen = list(s.get("apps") or [])
+        per_appliance = [(name, plan_appliances([name], hours["energy_kwh"])) for name in chosen]
+        plan = plan_appliances(chosen, hours["energy_kwh"])
+        st.markdown(recommendation_html(row, focus, per_appliance, plan, chosen), unsafe_allow_html=True)
+        with st.expander("Choose your appliances"):
+            st.pills("Appliances", options=list(APPLIANCES), selection_mode="multi", key="apps",
+                     label_visibility="collapsed")
+            st.caption("About 0.3 kW of always-on load (fridge, fans, lights) is served first.")
+    with right:
+        st.markdown(gauge_html(row, settings["system_kw"]), unsafe_allow_html=True)
+        st.markdown(weather_card_html(row), unsafe_allow_html=True)
         st.markdown(
-            f'<div class="sc"><div class="sc-label">Appliance planner · {day_name(focus)}</div></div>',
+            savings_html(week_value, s["price"], SETUPS[settings["setup"]], float(days["yield_kwh"].sum())),
             unsafe_allow_html=True,
         )
-        selected = st.pills("Appliances", options=list(APPLIANCES), selection_mode="multi", key="apps",
-                            label_visibility="collapsed")
-        chosen = list(selected or [])
-        plan = plan_appliances(chosen, hours["energy_kwh"])
-        st.markdown(plan_html(chosen, plan, day_name(focus)), unsafe_allow_html=True)
-        st.caption("Assumes about 0.3 kW of always-on load (fridge, fans, lights) is served first.")
+
+    st.markdown(hourly_html(hours, start, end, now=now if is_today else None, peak=peak), unsafe_allow_html=True)
+    st.markdown(week_html(outlook, focus, href=lambda d: link_with(day=d.date().isoformat())), unsafe_allow_html=True)
     st.caption(
         f"Forecast: Open-Meteo, refreshed hourly. A usual day is the median for this month from the "
         f"{baseline_source} over recent years, with your system settings. Peak-tariff hours are typical "
         "DISCO hours; check your bill."
     )
+
+
+QUICK_CITIES = ["Lahore", "Karachi", "Islamabad", "Faisalabad", "Peshawar", "Quetta", "Multan"]
+
+
+def _pick_city() -> None:
+    chosen = st.session_state.get("city_chip")
+    if chosen:
+        st.session_state["city"] = chosen
+        st.query_params.pop("day", None)
+
+
+def city_chips(city: str) -> None:
+    options = [c for c in QUICK_CITIES if c in CITIES]
+    if city not in options:
+        options = [city, *options]
+    st.session_state["city_chip"] = city
+    st.pills("City", options=options, key="city_chip", on_change=_pick_city, label_visibility="collapsed")
 
 
 # --------------------------------------------------------------------------- analysis
@@ -514,12 +550,13 @@ def main() -> None:
     settings = sidebar_inputs()
     save_settings()
     info = CITIES[settings["city"]]
+    st.markdown(theme_css(), unsafe_allow_html=True)
+    components.html(THEME_WATCHER, height=0)
     st.markdown(
-        f'<div style="margin:-8px 0 10px"><div style="font-size:34px;font-weight:700;letter-spacing:-.02em">'
-        f'{settings["city"]}</div><div style="opacity:.65;font-size:15px">{info["province"]} · '
-        f'{settings["system_kw"]:g} kWp · {SETUPS[settings["setup"]]}</div></div>',
+        header_html(settings["city"], info["province"], settings["system_kw"], SETUPS[settings["setup"]]),
         unsafe_allow_html=True,
     )
+    city_chips(settings["city"])
     outlook_tab, analysis_tab = st.tabs(["Outlook", "Analysis"])
     with outlook_tab:
         render_outlook(settings)
