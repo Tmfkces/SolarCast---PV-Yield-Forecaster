@@ -10,3 +10,17 @@ gatherUsageStats = false
 
 [client]
 showErrorDetails = "minimal"
+[theme]
+primaryColor = "#F59E0B"
+baseRadius = "0.75rem"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+
+[theme.light]
+backgroundColor = "#F6F7F9"
+secondaryBackgroundColor = "#ECEFF3"
+textColor = "#1F2937"
+
+[theme.dark]
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#161B24"
+textColor = "#E5E7EB"

@@ -118,20 +118,26 @@ You do not need to derive the equation in an interview. The key point is: the Su
 
 ### Step 2: adjust horizontal sunlight to the panel plane
 
-NASA's GHI is measured for a horizontal surface. A tilted solar panel receives sunlight at a different angle. The model applies this first-order geometric adjustment:
+NASA's GHI is measured for a horizontal surface. A tilted solar panel receives sunlight at a different angle. Direct sunlight (beam) and scattered sky light (diffuse) behave differently, so the model splits them first:
 
 ```text
-POA = GHI × max(cos(latitude - tilt - declination), 0.05)
-             / max(cos(latitude - declination), 0.05)
+H0  = sunlight at the top of the atmosphere for this latitude and date
+Kt  = GHI / H0                       (clearness index: 0 = very cloudy, ~0.75 = very clear)
+Hd  = GHI × diffuse_fraction(Kt)     (Erbs et al. 1982 correlation)
+Hb  = GHI − Hd                       (beam part)
+
+POA = Hb × Rb  +  Hd × (1 + cos tilt) / 2  +  GHI × albedo × (1 − cos tilt) / 2
 ```
 
 - **GHI** is global horizontal irradiance, or daily solar energy on a flat surface.
 - **POA** means plane-of-array irradiance: an estimate of the daily solar energy reaching the panel's tilted plane.
-- The default panel tilt is the city's latitude.
-- The simplified formula assumes a south-facing panel.
-- The `0.05` floor avoids dividing by a value close to zero.
+- **Rb** is how much more (or less) beam sunlight the tilted panel catches than a flat surface over the whole day. The code computes it by stepping the Sun across the sky in half-degree steps, so it works for any panel direction (azimuth): south, east, west, or anything in between.
+- The diffuse term assumes sky light comes evenly from the whole sky (the Liu–Jordan "isotropic" model). The last term is light reflected from the ground (albedo 0.2).
+- The default panel tilt is the city's latitude, facing south.
 
-This is intentionally a simple approximation. It does **not** separate direct sunlight from diffuse sky light, and it does not represent shading or hourly sunlight angles. The function accepts an azimuth setting for interface compatibility, but the current formula does not calculate different azimuths; it always uses the south-facing approximation.
+Why this matters: on a cloudy day most light is diffuse, so tilting the panel gains very little. The first version of this project applied the beam ratio to *all* of GHI and therefore over-credited tilt on cloudy days. That older formula is still available as `transposition="geometric"` for comparison.
+
+The tests check the numerical Rb against Klein's textbook closed-form formula (within 1 %) and the top-of-atmosphere value against a worked example in Duffie & Beckman. The model still works on daily totals: it does not represent shading, horizon brightening, or hour-by-hour weather.
 
 ### Step 3: estimate panel-cell temperature
 
@@ -216,11 +222,13 @@ The sine and cosine values encode the time of year in a way that wraps smoothly 
 
 The features on date `t` are paired with the physics estimate for date `t + 1`. This one-day shift is what makes the ML task day-ahead. The rows at the start of the dataset that cannot have a complete 7-day history are dropped; the final row has no next-day target inside the data range and is dropped too.
 
+The shift is by **calendar day**, not by table row. Cleaning removes long gaps (more than 3 missing days), so the code first rebuilds a complete daily calendar and only then shifts. Without this, the day just before a two-week gap would be paired with a "tomorrow" that is really two weeks later. An automated test checks that every target is exactly one day after its features, even when a gap is present.
+
 ### Which algorithm runs?
 
 The intended main model is **LightGBM**, a tree-based machine-learning method. Tree models learn patterns by making a series of decisions such as “if irradiance is in this range and temperature is above that range, predict this yield.”
 
-In the verified run for this project, LightGBM could not load because a required native runtime library was missing, so the code used the **scikit-learn GradientBoostingRegressor fallback**. The benchmark table therefore reports `GradientBoosting`, not LightGBM. If LightGBM loads in another environment, the code chooses it automatically.
+The current benchmark ran with LightGBM. On some machines (for example the original Replit environment) LightGBM cannot load its native runtime library; the code then automatically uses the **scikit-learn GradientBoostingRegressor fallback**, and the table row is labelled `GradientBoosting`.
 
 The fallback is also a tree-based boosting model. Boosting builds a sequence of small trees, with each later tree helping correct errors left by earlier trees.
 
@@ -233,11 +241,12 @@ Oldest records                                      Newest records
 |------- 70% training -------|-- 15% validation --|-- 15% test --|
 ```
 
-- The **training** portion is used to fit the model.
-- The **validation** portion is reserved between training and final testing.
-- The **test** portion is the latest period used for the reported comparison.
+- The **training** portion is used to fit candidate models.
+- The **validation** portion chooses how many boosting rounds (trees) to use: training stops when the validation error stops improving ("early stopping").
+- The model is then refit on training + validation with that number of rounds.
+- The **test** portion is the latest period. It is used exactly once, for the reported comparison.
 
-Important implementation detail: the code currently trains on the first 70% and tests on the last 15%; it creates the 15% validation block but does not use it to choose settings or stop training. Do not claim that hyperparameters were tuned on the validation set. A useful next research improvement is to use that block for model selection and keep the test block untouched until the final evaluation.
+This means the number of trees *was* tuned on the validation set, and the test set was never used for any decision.
 
 Keeping time order is important because a model forecasting future days should not learn from future observations before being tested on the past. Shuffling could create an unrealistically easy result by mixing earlier and later weather across the training and testing sets.
 
@@ -247,13 +256,16 @@ A basic forecast is useful for comparison. **Persistence** assumes tomorrow will
 
 ## 8. How the models are compared
 
-All reported comparisons use the test time window. The output contains three rows:
+All reported comparisons use the test time window. The output contains four rows:
 
 1. **Persistence:** tomorrow is predicted from today's estimated yield.
-2. **Physics upper bound:** the model is given true tomorrow's weather, and the resulting physics yield is compared with the same physics-generated target.
-3. **GradientBoosting:** the model estimates tomorrow's target using today's weather history.
+2. **Climatology (monthly mean):** tomorrow is predicted as the average training-period yield for tomorrow's calendar month. This "seasonal average" baseline ignores today's weather entirely.
+3. **Physics oracle (true next-day weather):** the physics model is given true tomorrow's weather, and the resulting yield is compared with the same physics-generated target.
+4. **LightGBM or GradientBoosting:** the model estimates tomorrow's target using today's weather history.
 
-The second row has zero error by construction: the target itself is defined as the physics model's output on tomorrow's true weather. This row is an **oracle reference** showing what would happen if tomorrow's weather were already known. It is not an independent model, a real upper bound on all possible physical systems, or a deployable forecast.
+A useful ML forecast should beat *both* persistence and climatology. The table also reports **bias** (average of predicted − actual): positive means the model over-forecasts on average.
+
+The oracle row has zero error by construction: the target itself is defined as the physics model's output on tomorrow's true weather. This row is an **oracle reference** showing what would happen if tomorrow's weather were already known. It is not an independent model, a real upper bound on all possible physical systems, or a deployable forecast.
 
 The scores are:
 
@@ -269,30 +281,34 @@ All error scores are based on **daily energy** and should be read in kWh/day (or
 
 ## 9. What the recorded results say
 
-The benchmark used a 5 kW system and NASA POWER data from 2019-01-01 through 2024-12-31. The test rows below report daily-yield errors. Results were produced with GradientBoosting fallback.
+The benchmark used a 5 kW system facing south at latitude tilt, and NASA POWER data from 2019-01-01 through 2024-12-31. The test window is roughly February to December 2024. The model was LightGBM; the number of trees was chosen on the validation window just before it. Errors are daily energy in kWh/day. Reproduce with `python -m pvyield benchmark --out docs/benchmark_metrics.csv --figures docs/figures`.
 
-| City | Model | RMSE | MAE | MAPE | R² | Skill vs persistence |
-| --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Faisalabad | Persistence | 4.2080 | 2.8008 | 18.6867% | 0.2775 | 0.0000 |
-| Faisalabad | Physics upper bound | 0.0000 | 0.0000 | 0.0000% | 1.0000 | 1.0000 |
-| Faisalabad | GradientBoosting | 3.6013 | 2.5617 | 17.9020% | 0.4708 | 0.1442 |
-| Karachi | Persistence | 3.0326 | 1.8964 | 11.1145% | 0.4963 | 0.0000 |
-| Karachi | Physics upper bound | 0.0000 | 0.0000 | 0.0000% | 1.0000 | 1.0000 |
-| Karachi | GradientBoosting | 2.7299 | 1.7209 | 11.1286% | 0.5918 | 0.0998 |
-| Quetta | Persistence | 4.3087 | 2.5899 | 12.6929% | 0.0495 | 0.0000 |
-| Quetta | Physics upper bound | 0.0000 | 0.0000 | 0.0000% | 1.0000 | 1.0000 |
-| Quetta | GradientBoosting | 3.7185 | 2.3551 | 12.5408% | 0.2921 | 0.1370 |
-| Skardu | Persistence | 6.0982 | 4.5518 | 24.5327% | 0.1968 | 0.0000 |
-| Skardu | Physics upper bound | 0.0000 | 0.0000 | 0.0000% | 1.0000 | 1.0000 |
-| Skardu | GradientBoosting | 5.5502 | 4.4602 | 24.2267% | 0.3347 | 0.0899 |
+| City | Model | RMSE | MAE | MAPE | Bias | R² | Skill vs persistence |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Faisalabad | Persistence | 4.404 | 2.957 | 22.11% | +0.051 | 0.292 | +0.000 |
+| Faisalabad | Climatology (monthly mean) | 4.571 | 3.396 | 29.62% | +0.215 | 0.238 | -0.038 |
+| Faisalabad | Physics oracle (true next-day weather) | 0.000 | 0.000 | 0.00% | +0.000 | 1.000 | +1.000 |
+| Faisalabad | LightGBM | 3.842 | 2.771 | 22.46% | -0.028 | 0.461 | +0.127 |
+| Karachi | Persistence | 3.200 | 2.004 | 12.00% | -0.019 | 0.432 | +0.000 |
+| Karachi | Climatology (monthly mean) | 3.276 | 2.155 | 14.63% | +0.751 | 0.405 | -0.024 |
+| Karachi | Physics oracle (true next-day weather) | 0.000 | 0.000 | 0.00% | +0.000 | 1.000 | +1.000 |
+| Karachi | LightGBM | 2.819 | 1.790 | 11.94% | +0.386 | 0.559 | +0.119 |
+| Quetta | Persistence | 4.675 | 2.761 | 14.82% | +0.059 | -0.000 | +0.000 |
+| Quetta | Climatology (monthly mean) | 4.716 | 3.150 | 18.84% | +0.777 | -0.018 | -0.009 |
+| Quetta | Physics oracle (true next-day weather) | 0.000 | 0.000 | 0.00% | +0.000 | 1.000 | +1.000 |
+| Quetta | LightGBM | 4.127 | 2.616 | 15.91% | +0.499 | 0.221 | +0.117 |
+| Skardu | Persistence | 6.767 | 4.939 | 30.60% | +0.019 | 0.156 | +0.000 |
+| Skardu | Climatology (monthly mean) | 7.882 | 6.517 | 42.02% | -1.289 | -0.145 | -0.165 |
+| Skardu | Physics oracle (true next-day weather) | 0.000 | 0.000 | 0.00% | +0.000 | 1.000 | +1.000 |
+| Skardu | LightGBM | 6.169 | 4.979 | 32.65% | -0.270 | 0.299 | +0.088 |
 
 ![Faisalabad daily proxy yield, actual versus predicted](figures/faisalabad_actual_vs_predicted.png)
 
 ![Faisalabad model feature importance](figures/faisalabad_feature_importance.png)
 
-The ML model had lower RMSE and MAE than persistence in all four city runs. This means it improved on the simple “tomorrow resembles today” estimate for those particular periods and this proxy target. It does **not** prove it will beat persistence on measured rooftop production or future data.
+LightGBM had the lowest RMSE in all four cities, about 9–13 % better than persistence. The monthly-average (climatology) baseline was worse than persistence everywhere, so the improvement comes from using recent weather, not just from knowing the season. It does **not** prove the model will beat persistence on measured rooftop production or future years.
 
-Skardu had the largest RMSE and MAPE in this comparison, and the lowest skill score versus persistence. This tells us its errors were larger in the tested data, but it does not by itself explain why. To explain causes confidently, we would need more research: inspect seasonal errors, data quality, weather variability, and more locations or years.
+The improvement is mostly on large errors. The ML forecast is smoother than reality and rarely predicts a sudden cloudy day, so its MAPE is about the same as, or slightly worse than, persistence in Faisalabad, Quetta and Skardu, and its MAE is slightly worse in Skardu. Skardu has the largest errors overall, which fits its more variable mountain weather, but proving the cause would need more research (seasonal error analysis, more years and locations).
 
 Feature importance ranks which inputs the fitted tree model used most. It is useful for describing patterns in this dataset, but it does not prove that a feature causes higher or lower yield. Correlated features can share or distort importance.
 
@@ -301,26 +317,24 @@ Feature importance ranks which inputs the fitted tree model used most. It is use
 The Streamlit app lets a user:
 
 - Select one of 30 cities; Faisalabad is selected by default.
-- Choose system size, tilt, performance ratio, soiling loss, and date range.
+- Choose system size, tilt, azimuth (panel direction), performance ratio, soiling loss, and date range.
 - Run the analysis.
-- View headline annualized yield, yield per kWp, capacity factor, and best/worst month.
-- Compare physics-target predictions with persistence and ML on the test window.
-- View actual-versus-predicted, scatter, and feature-importance charts.
+- View headline annualized yield, yield per kWp, capacity factor, and best/worst month, plus a typical-year monthly profile.
+- Compare physics-target predictions with persistence, climatology and ML on the test window. The ML comparison uses the same tilt, azimuth and loss settings as the forecast.
+- View actual-versus-predicted, scatter, feature-importance and monthly-residual charts.
 - Inspect and download the cleaned weather table as a CSV.
 
-Weather retrieval and model training use Streamlit's cache. This avoids repeating expensive fetches or training while settings remain the same. The first calculation can take longer than later views, especially when data has not been cached yet.
+The model is trained once per settings combination, and training never writes files to disk. Weather retrieval and model training use Streamlit's cache. This avoids repeating expensive fetches or training while settings remain the same. The first calculation can take longer than later views, especially when data has not been cached yet.
 
 ## 11. Tests and what they prove
 
-The automated suite contains seven tests:
+The automated suite (`pytest`, runs offline) is grouped like this:
 
-- Zero sunlight produces zero estimated energy.
-- Higher air temperature lowers output when other weather is held constant.
-- Doubling system size doubles the model output.
-- A latitude-tilt panel gives at least as much modeled yield as a flat panel on the selected winter day.
-- NASA fill values are cleaned and short gaps are filled.
-- Long gaps are removed.
-- Synthetic 400-day data trains without an error and keeps training dates earlier than test dates.
+- **Solar geometry against textbook values:** top-of-atmosphere sunlight matches a worked example in Duffie & Beckman; the numerical beam factor Rb matches Klein's closed-form formula within 1 % for several dates and tilts; a flat panel's POA equals GHI; east- and west-facing panels are symmetric; south beats north in winter; tilt helps much less on overcast days.
+- **Energy model:** zero sunlight gives zero energy; missing weather gives "missing", not zero; hotter air lowers output; output scales with system size and losses; a realistic Faisalabad year gives a typical specific yield (1,300–1,800 kWh/kWp); invalid inputs are rejected.
+- **Data:** fill values and short gaps are handled, long gaps and missing calendar days are removed, the NASA response is parsed, dates are validated, and caching works (tested with a fake NASA server so no internet is needed).
+- **Machine learning:** the split is chronological, every target is exactly the next calendar day even across gaps, validation picks the number of trees, training writes no files, the model beats persistence on learnable data, and saved models reload correctly.
+- **Evaluation, CLI and app:** metrics match hand calculations; the benchmark command writes the CSV and figures; the Streamlit app runs end to end.
 
 These are focused software and behavior checks. They do not validate the model against a real solar installation. A live API fetch was separately run for Faisalabad 2023, and the interface endpoint was checked for startup; those are operational checks, not scientific ground-truth validation.
 
@@ -330,20 +344,20 @@ These are focused software and behavior checks. They do not validate the model a
 
 - It has no actual inverter or smart-meter PV production measurements.
 - It uses daily weather values, not hourly irradiance or hourly production.
-- Its tilted-panel conversion is a simple geometry approximation.
-- It has no direct/diffuse irradiance split, shading, roof orientation model, or panel-level design.
+- Its direct/diffuse split comes from a daily correlation (Erbs), not measured beam and diffuse data, and the sky is treated as uniformly bright (isotropic).
+- It has no shading, horizon, or panel-level design model.
 - It uses general loss assumptions instead of a detailed plant model.
 - It does not observe dust events, cleaning dates, equipment outages, or curtailment.
 - Its ML target inherits any errors in the physics model.
-- The validation split is currently unused for model selection.
+- The day-ahead model only sees today's weather history, not a weather forecast for tomorrow.
 
 ### Strong next steps for research
 
 1. Obtain time-aligned real PV output, system rating, panel layout, tilt, azimuth, inverter, and cleaning records.
 2. Compare NASA weather with local station or rooftop measurements when possible.
-3. Use the validation period for tuning and keep the test period isolated for final evaluation.
+3. Add tomorrow's numerical weather forecast (e.g. predicted cloud cover) as a feature.
 4. Compare multiple models and report uncertainty, not only one point estimate.
-5. Improve the solar geometry with hourly calculations and direct/diffuse irradiance.
+5. Move to hourly calculations with an anisotropic sky model (HDKR or Perez).
 6. Test generalization across years, cities, and system sizes.
 7. Report the data source version and cache used so results can be reproduced.
 
@@ -371,7 +385,7 @@ Tomorrow's daily energy estimate from the physics model, generated using tomorro
 
 ### “How do you prevent future-data leakage?”
 
-I keep records in chronological order, do not shuffle, and split into an earlier training period and later evaluation periods. The features for one date use weather available on that date or earlier, while the target is shifted to the following date. The current validation segment is created but not used to tune the model, which I would improve next.
+I keep records in chronological order, do not shuffle, and split into an earlier training period and later evaluation periods. The features for one date use weather available on that date or earlier, while the target is shifted to the following date. Shifts are done on a complete daily calendar, so gaps in the data cannot pair a day with a distant "tomorrow". The validation period chooses the number of trees, and the test period is used only once, for the final scores.
 
 ### “What does the zero-error physics row mean?”
 
@@ -387,7 +401,7 @@ PV cell efficiency generally decreases above its reference temperature. The mode
 
 ### “What would make the study stronger?”
 
-Measured PV output aligned with the weather data. I would also use the validation data for model selection, improve the hourly solar geometry, compare more forecasting models, and report uncertainty across multiple test periods.
+Measured PV output aligned with the weather data. I would also add a numerical weather forecast as an input, move to hourly solar geometry, compare more forecasting models, and report uncertainty across multiple test periods.
 
 ### “What is the biggest limitation?”
 
@@ -399,7 +413,7 @@ The most important limitation is the lack of metered PV output. Since ML learns 
 2. Keep the example 5 kW size and select a manageable date range.
 3. Click **Run forecast**.
 4. In **Forecast**, explain annualized energy and specific yield.
-5. In **Physics vs ML**, explain the persistence baseline and why the physics upper bound is an oracle.
+5. In **Physics vs ML**, explain the persistence and climatology baselines and why the physics oracle row has zero error.
 6. In **Explain**, describe feature importance as model behavior, not causation.
 7. In **Data**, show the source weather columns and CSV download.
 8. End by stating the proxy-target limitation and what real measured data would add.

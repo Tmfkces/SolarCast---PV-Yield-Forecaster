@@ -60,3 +60,13 @@ pv-yield-pk/data/models/*
 !pv-yield-pk/data/models/.gitkeep
 .streamlit/secrets.toml
 /generated-artifacts/
+
+# Python build / coverage
+*.egg-info/
+.coverage
+htmlcov/
+
+# Local, per-user files
+pv-yield-pk/data/user_settings.json
+.claude/
+.ruff_cache/
